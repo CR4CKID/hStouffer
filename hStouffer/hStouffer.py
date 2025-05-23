@@ -3,7 +3,7 @@
 # Author    : DaeHee Kim
 # Date      : 2024-03-21
 # Usage     : DESeq2 결과물들 합쳐서 meta analysis
-# Example   : meta_analysis_parallel_random.py -d dataset/low_fat/ -m 34 -r 100 -o meta_low_n34_r100
+# Example   : hStouffer.py -d dataset/low_fat/ -o meta_low_fat
 # Description   : hStouffer
 #=============================================================================#
 
