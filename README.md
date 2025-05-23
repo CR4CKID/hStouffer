@@ -40,10 +40,10 @@ Prerequisities can be simply install using requirements.txt
 *Datasets must be prepared in the format of DESeq2 output results <br><br>
 
 Simple example :
-<pre lang="markdown"> hStouffer.py -d dataset/low_fat/ -o meta_low_fat </pre>
+<pre lang="markdown"> hStouffer.py -d dataset_directory -o meta_dataset_fat </pre>
 
 More detail example :
-<pre lang="markdown"> hStouffer.py -d dataset/low_fat/ -o meta_low_fat_max -r 10000 -c 64 -l max </pre>
+<pre lang="markdown"> hStouffer.py -d dataset_directory -o meta_dataset_max -r 10000 -c 64 -l max </pre>
 
 <br>
 
