@@ -4,7 +4,7 @@
 # Date      : 2024-03-21
 # Usage     : DESeq2 결과물들 합쳐서 meta analysis
 # Example   : hStouffer.py -d dataset/low_fat/ -o meta_low_fat
-# Description   : hStouffer
+# Description   : hStouffer is a meta-analysis method that combines p-values from multiple studies to identify differentially expressed genes (DEGs) across datasets.
 #=============================================================================#
 
 import argparse
