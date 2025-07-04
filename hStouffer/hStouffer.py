@@ -74,8 +74,7 @@ def linear_interpolation(x, y, predict_x):
     raise ValueError("Not proper size.")
 
 if args.p:
-    p = str(args.p)
-    pval_threshold = float("1e-"+p)
+    pval_threshold = str(args.p)
 else:
     pval_threshold = linear_interpolation(x, average_y, combi)
 
