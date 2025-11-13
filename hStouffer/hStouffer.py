@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 #=============================================================================#
 # Author    : DaeHee Kim
 # Date      : 2025-05-23
@@ -36,7 +37,7 @@ dup = args.n
 is_winsored = args.w
 max_min = args.l
 
-DESeq2_files = glob.glob(f"{directory}/*deg.txt")
+DESeq2_files = glob.glob(f"{directory}/*.txt")
 if dup:
     dup = int(dup)
     random_dup = [random.choice(DESeq2_files) for _ in range(dup-len(DESeq2_files))]
@@ -47,6 +48,7 @@ combination_method = args.t
 winsor = 1e-3
 core = int(args.c)
 combi = len(DESeq2_files)
+
 
 x = np.array([10,20,30,40,50,60,70,80,90,100,
               110,120,130,140,150,160,170,180,190,200])
@@ -74,6 +76,8 @@ def linear_interpolation(x, y, predict_x):
     raise ValueError("Not proper size.")
 
 if args.p:
+    # p = str(args.p)
+    # pval_threshold = float("1e-"+p)
     pval_threshold = str(args.p)
 else:
     pval_threshold = linear_interpolation(x, average_y, combi)
@@ -104,8 +108,9 @@ def benjamini_hochberg(p_values, alpha=0.05):
 
 gses = []
 basemean = defaultdict(list)
-log2Fold = defaultdict(list)
 pval = defaultdict(list)
+log2fc_dict = defaultdict(list)
+lfcse_dict = defaultdict(list)
 
 for i, dsq in enumerate(sorted(DESeq2_files)):
     print(f"{i+1} / {len(DESeq2_files)} DESeq2 file loading           ", end="\r")
@@ -120,6 +125,8 @@ for i, dsq in enumerate(sorted(DESeq2_files)):
                 pval[gene].append(row.iloc[5])
         else:
             pval[gene].append(row.iloc[5])
+        log2fc_dict[gene].append(row.iloc[2])
+        lfcse_dict[gene].append(row["lfcSE"])
 
 print("\nDESeq2 data loaded!")
 
@@ -167,13 +174,54 @@ def process_combination(combi, pval):
     adjusted_stouffer = benjamini_hochberg(stouffer_arr)
     return genes_arr, adjusted_stouffer
 
+def rem_1_modified(lg2fc, lse):
+    data = {'log2FC': lg2fc, 'SE': lse}
+    df = pd.DataFrame(data)
+
+    df = df[df['SE'] > 0].dropna(subset=['SE', 'log2FC'])
+    df['Variance'] = df['SE'] ** 2
+
+    if np.sum(1 / df['Variance']) == 0:
+        fixed_effect = np.nan
+        fixed_variance = np.nan
+    else:
+        fixed_effect = np.sum(df['log2FC'] / df['Variance']) / np.sum(1 / df['Variance'])
+        fixed_variance = 1 / np.sum(1 / df['Variance'])
+
+    if len(df) > 1:
+        Q = np.sum((df['log2FC'] - fixed_effect) ** 2 / df['Variance'])
+        weights = 1 / df['Variance']
+        S1 = np.sum(weights)
+        S2 = np.sum(weights**2)
+        if S1 - (S2 / S1) > 0:
+            tau_squared = max(0, (Q - (len(df) - 1)) / (S1 - (S2 / S1)))
+        else:
+            tau_squared = 0
+    else:
+        tau_squared = 0
+
+    df['Weight_Random'] = 1 / (df['Variance'] + tau_squared)
+    if np.sum(df['Weight_Random']) == 0:
+        random_effect = np.nan
+        random_variance = np.nan
+    else:
+        random_effect = np.sum(df['Weight_Random'] * df['log2FC']) / np.sum(df['Weight_Random'])
+        random_variance = 1 / np.sum(df['Weight_Random'])
+
+    if not np.isnan(random_variance):
+        ci_lower = random_effect - 1.96 * np.sqrt(random_variance)
+        ci_upper = random_effect + 1.96 * np.sqrt(random_variance)
+        is_deg = not (ci_lower <= 0 <= ci_upper)
+    else:
+        is_deg = False
+
+    return is_deg, random_effect
+
 results = []
 parallel = Parallel(n_jobs=core, backend="loky")
 results = parallel(delayed(process_combination)(combi, pval) for combi in tqdm(combinations, desc="Combination Processing"))
 
-fisher_dict = defaultdict(list)
 stouffer_dict = defaultdict(list)
-
 for genes_arr, adjusted_stouffer in results:
     for n, gene in enumerate(genes_arr):
         stouffer_dict[gene].append(adjusted_stouffer[n])
@@ -186,18 +234,33 @@ for gene in stouffer_dict.keys():
     final_result[gene] = stouffer_deg_num/total
 
 
-number_of_degs = 0
-for sto in final_result.values():
-    if (sto >= 0.95):
-        number_of_degs += 1
-print(number_of_degs)
+up_genes = []
+down_genes = []
 
-with open(output, "w") as f:
-    f.write("Gene\tStouffer\n")
-    f.write(f"Total DEGs\t{number_of_degs}\n")
-    for gene in sorted(final_result.keys()):
-        f.write(f"{gene}\t{final_result[gene]}\n")
+for gene in final_result.keys():
+    if final_result[gene] >= 0.95:
+        lg2fc_list = log2fc_dict[gene]
+        lse_list = lfcse_dict[gene]
 
+        is_deg, REM_effect = rem_1_modified(lg2fc_list, lse_list)
+
+        if not is_deg:  
+            continue
+
+        if REM_effect > 0:
+            up_genes.append((gene, final_result[gene], REM_effect))
+        else:
+            down_genes.append((gene, final_result[gene], REM_effect))
+
+pd.DataFrame(up_genes, columns=["Gene", "Stouffer_score", "REM_log2FC"]).to_csv(
+    f"{output}_up_DEG.txt", sep="\t", index=False
+)
+pd.DataFrame(down_genes, columns=["Gene", "Stouffer_score", "REM_log2FC"]).to_csv(
+    f"{output}_down_DEG.txt", sep="\t", index=False
+)
+
+print(f"Up DEGs saved → {output}_up_DEG.txt")
+print(f"Down DEGs saved → {output}_down_DEG.txt")
 
 end_time = time.time()
 
